@@ -1,0 +1,18 @@
+# Source code (not needed at runtime — build/ has the compiled output)
+src/
+tsconfig.json
+
+# Large assets (2.1 MB for a README banner — not needed in the package)
+banner.png
+
+# Source maps and type declarations (not needed to run the server)
+build/*.map
+build/*.d.ts
+build/*.d.ts.map
+
+# Developer configs
+.gitignore
+.npmignore
+
+# Freebuff workspace
+.freebuff/
