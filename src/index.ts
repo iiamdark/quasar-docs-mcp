@@ -7,45 +7,184 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 // ---------------------------------------------------------------------------
-// Base configuration — Edit these URLs to point to your documentation
+// Base configuration
 // ---------------------------------------------------------------------------
 
 const DOCS_BASE_URL =
-  process.env.DOCS_BASE_URL ?? "https://docs.example.com/quasar-store";
+  process.env.DOCS_BASE_URL ?? "https://www.quasar-store.com";
 
 /** CSS selectors for extracting content from documentation pages. */
 const SELECTORS = {
   /** Main article container. */
-  article: "article, .doc-content, .markdown-body, main",
+  article: "article, .doc-content, .markdown-body, main, .docs-content-page",
   /** Article title element. */
   title: "h1",
   /** Navigation links to other docs pages. */
-  navLinks: "nav a, .sidebar a, .toc a",
+  navLinks: "nav a, .sidebar a, .toc a, aside a",
 };
+
+/** Common User-Agent header for all HTTP requests. */
+const UA =
+  "QuasarStoreDocsMCP/1.0 (compatible; MCP-Client; +https://github.com/iiamdark/quasar-docs-mcp)";
+
+// ---------------------------------------------------------------------------
+// Navigation link extraction (raw HTML scanning for /docs/… paths)
+// ---------------------------------------------------------------------------
+
+/**
+ * Finds all documentation article URLs from the raw HTML by scanning for
+ * [`/docs/…`]{@link https://www.quasar-store.com/docs} href values.
+ *
+ * Next.js App Router sites ship their navigation tree as React Server
+ * Components data within `<script>` tags rather than as rendered `<a>`
+ * elements, so we use regex on the raw HTML body.
+ *
+ * @remarks
+ * The regex searches for literal `href="/docs/..."` in the raw HTML body.
+ * These hrefs exist in the RSC data within `<script>` tags as well as in
+ * server-rendered components. This approach works for the current Quasar
+ * Store site; if the site moves entirely to client-side rendering, this
+ * function may need updating.
+ */
+function extractDocLinksFromHtml(
+  html: string,
+  baseUrl: string
+): Array<{ title: string; url: string }> {
+  const seen = new Set<string>();
+  const links: Array<{ title: string; url: string }> = [];
+
+  const hrefRegex = /href="(\/docs\/[^"']+)"/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = hrefRegex.exec(html)) !== null) {
+    const href = match[1];
+
+    if (href === "/docs" || seen.has(href)) continue;
+    seen.add(href);
+
+    // Build a human-readable title from the URL path segments
+    const segments = href.replace("/docs/", "").split("/");
+    const product = segments[0].replace(/[-_]/g, " ");
+    const subpage =
+      segments.length > 1
+        ? segments.slice(1).join(" ").replace(/[-_]/g, " ")
+        : "Overview";
+
+    const title =
+      capitalize(product) +
+      (segments.length > 1 ? " \u2014 " + capitalize(subpage) : "");
+
+    try {
+      links.push({ title, url: new URL(href, baseUrl).toString() });
+    } catch {
+      // Ignore malformed URLs
+    }
+  }
+
+  return links;
+}
+
+/** Capitalizes the first letter of each word in a string. */
+function capitalize(str: string): string {
+  return str
+    .split(/\s+/)
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// RSC (React Server Components) content extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts readable text content from a Next.js RSC payload using a
+ * best-effort regex approach.
+ *
+ * The RSC payload in `self.__next_f.push([1, "..."])` contains
+ * JSON-encoded React elements. This function extracts text strings
+ * that look like article content (>= 10 chars, not URLs/paths/classNames).
+ *
+ * This is intentionally a best-effort parser — it may not capture all
+ * content, but it provides a useful starting point.
+ */
+function extractRscContent(html: string): string {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+
+  // Match RSC push entries, handling JS-escaped quotes correctly.
+  // Uses a pattern that treats \" as an escaped quote (not a closing quote).
+  const pushRegex = /self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)/g;
+  let pushMatch: RegExpExecArray | null;
+
+  while ((pushMatch = pushRegex.exec(html)) !== null) {
+    // JS-unescape the string: \" -> ", \\ -> \, etc.
+    let raw: string;
+    try {
+      raw = JSON.parse(`"${pushMatch[1]}"`) as string;
+    } catch {
+      continue;
+    }
+
+    // Extract all text fragments from the JSON structure.
+    const textRegex = /"((?:[^"\\]|\\.){10,})"/g;
+    let textMatch: RegExpExecArray | null;
+    while ((textMatch = textRegex.exec(raw)) !== null) {
+      const text = textMatch[1]
+        .replace(/\\(["\\/])/g, "$1") // Unescape JSON escapes
+        .trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+
+      // Filter out non-content strings (CSS classes, URLs, icon names, etc.)
+      if (
+        text.startsWith("http") ||
+        text.startsWith("/") ||
+        text.startsWith("_") ||
+        text.startsWith("data:") ||
+        text.startsWith("lucide") ||
+        text.startsWith("radix") ||
+        text.startsWith("group/") ||
+        text.length < 10 ||
+        /^[a-z0-9_-]{10,30}$/.test(text)
+      )
+        continue;
+
+      lines.push(text);
+    }
+  }
+
+  return lines.join("\n\n");
+}
 
 // ---------------------------------------------------------------------------
 // Content extraction utilities
 // ---------------------------------------------------------------------------
 
 /**
- * Extracts clean approximate Markdown text from an HTML page using cheerio.
- * Strips non-content elements and structures headings, lists, tables, and code blocks.
+ * Attempts the standard cheerio-based content extraction from DOM elements.
+ * Works well for traditional (non-SPA) documentation sites.
  */
-function extractContentFromHtml(html: string, url: string): string {
+function extractContentViaCheerio(
+  html: string,
+  url: string
+): string | null {
   const $ = cheerio.load(html);
 
   // Remove non-content elements
-  $("script, style, nav, footer, header, aside, .sidebar, .nav, .footer, .header").remove();
+  $(
+    "script, style, nav, footer, header, aside, .sidebar, .nav, .footer, .header"
+  ).remove();
 
   // Find the main article container
   const article = $(SELECTORS.article).first();
   const container = article.length > 0 ? article : $("body");
 
-  // Extract title
   const title = $(SELECTORS.title).first().text().trim() || "Untitled";
 
-  // Convert HTML to structured Markdown-like text
   let content = `# ${title}\n\n`;
+
+  const directText = container.text().trim();
+  if (directText.length < 20) return null;
 
   container.children().each((_, el) => {
     const tagName = $(el).prop("tagName")?.toLowerCase();
@@ -103,10 +242,8 @@ function extractContentFromHtml(html: string, url: string): string {
           });
 
         if (rows.length > 0) {
-          // Header row
           content += "| " + rows[0].join(" | ") + " |\n";
           content += "| " + rows[0].map(() => "---").join(" | ") + " |\n";
-          // Data rows
           for (let i = 1; i < rows.length; i++) {
             content += "| " + rows[i].join(" | ") + " |\n";
           }
@@ -118,7 +255,6 @@ function extractContentFromHtml(html: string, url: string): string {
         content += `> ${text}\n\n`;
         break;
       default:
-        // For other elements, include text if meaningful
         if (text.length > 0) {
           content += `${text}\n\n`;
         }
@@ -126,20 +262,91 @@ function extractContentFromHtml(html: string, url: string): string {
     }
   });
 
-  // Attach source attribution
   content += `---\nSource: ${url}\n`;
-
   return content;
 }
 
 /**
- * Extracts navigation / index links from a documentation HTML page.
- * Returns an array of objects with title and absolute URL.
+ * Extracts content from a documentation page with a multi-strategy approach:
+ *
+ * 1. Extract `<title>` and `<meta name="description">` (always reliable)
+ * 2. Try RSC payload extraction (works for Next.js App Router sites)
+ * 3. Fall back to standard cheerio-based extraction (traditional HTML)
+ * 4. As a last resort, list related `/docs/` links found on the page
+ */
+function extractContentFromHtml(html: string, url: string): string {
+  const $ = cheerio.load(html);
+
+  const pageTitle =
+    $("title")
+      .first()
+      .text()
+      .replace(/ \| Quasar Store$/, "")
+      .trim() || "Untitled";
+
+  const description = $('meta[name="description"]').attr("content");
+
+  let content = `# ${pageTitle}\n\n`;
+  if (description) {
+    content += `> ${description}\n\n---\n\n`;
+  }
+
+  // Strategy 1: Try RSC payload extraction (Next.js App Router sites)
+  const rscContent = extractRscContent(html);
+  if (rscContent.length > 150) {
+    content += rscContent;
+  } else {
+    // Strategy 2: Fall back to cheerio-based extraction
+    const cheerioContent = extractContentViaCheerio(html, url);
+    if (cheerioContent) {
+      const body = cheerioContent.replace(/^# .+\n\n/, "");
+      content += body;
+    } else {
+      // Strategy 3: List related docs links as a useful fallback
+      const relatedLinks = extractDocLinksFromHtml(html, DOCS_BASE_URL)
+        .filter((l) => l.url !== url && l.url !== `${url}/`)
+        .slice(0, 10);
+
+      if (rscContent.length > 20) {
+        content += rscContent + "\n\n";
+      }
+
+      if (relatedLinks.length > 0) {
+        content += "## Related articles\n\n";
+        relatedLinks.forEach(
+          (l) => (content += `- [${l.title}](${l.url})\n`)
+        );
+        content += "\n";
+      }
+
+      if (rscContent.length <= 20 && relatedLinks.length === 0) {
+        content +=
+          "_Content could not be extracted from this page. " +
+          "The documentation may use client-side rendering. " +
+          "Try using the URL directly in a browser._\n\n";
+      }
+    }
+  }
+
+  content += `---\nSource: ${url}\n`;
+  return content;
+}
+
+/**
+ * Extracts navigation / index links from a documentation page.
+ * Supports both RSC-based (Next.js) and traditional HTML sites.
  */
 function extractNavLinks(
   html: string,
   baseUrl: string
 ): Array<{ title: string; url: string }> {
+  // Try raw-HTML extraction first (works for Next.js RSC data)
+  const htmlLinks = extractDocLinksFromHtml(html, baseUrl);
+  if (htmlLinks.length > 0) {
+    return htmlLinks;
+  }
+
+  // Fall back to DOM-based extraction (traditional HTML)
   const $ = cheerio.load(html);
   const links: Array<{ title: string; url: string }> = [];
 
@@ -151,7 +358,6 @@ function extractNavLinks(
 
     try {
       const absoluteUrl = new URL(href, baseUrl).toString();
-      // Only include links that belong to the documentation domain
       if (absoluteUrl.startsWith(new URL(baseUrl).origin)) {
         links.push({ title, url: absoluteUrl });
       }
@@ -163,6 +369,10 @@ function extractNavLinks(
   return links;
 }
 
+// ---------------------------------------------------------------------------
+// Core tools
+// ---------------------------------------------------------------------------
+
 /**
  * Searches documentation articles by filtering navigation link titles
  * against the provided query term.
@@ -171,39 +381,43 @@ async function searchDocs(
   query: string
 ): Promise<Array<{ title: string; url: string; snippet: string }>> {
   try {
-    const { data: html } = await axios.get<string>(DOCS_BASE_URL, {
+    // Fetch any docs page — the RSC payload is consistent across all pages
+    const docsUrl = `${DOCS_BASE_URL}/docs/advanced-inventory`;
+    const { data: html } = await axios.get<string>(docsUrl, {
       timeout: 15_000,
-      headers: {
-        "User-Agent":
-          "QuasarStoreDocsMCP/1.0 (compatible; MCP-Client)",
-      },
+      headers: { "User-Agent": UA },
     });
 
     const links = extractNavLinks(html, DOCS_BASE_URL);
     const lowerQuery = query.toLowerCase();
 
-    // Filter links whose title contains the search term
     const results = links
-      .filter((link) => link.title.toLowerCase().includes(lowerQuery))
+      .filter(
+        (link) =>
+          link.title.toLowerCase().includes(lowerQuery) ||
+          link.url.toLowerCase().includes(lowerQuery)
+      )
       .map((link) => ({
         title: link.title,
         url: link.url,
         snippet: `Documentation: ${link.title}`,
-      }));
+      }))
+      .slice(0, 20);
 
-    // If no direct matches, return first 10 available links for refinement
     if (results.length === 0) {
-      return links.slice(0, 10).map((link) => ({
+      return links.slice(0, 15).map((link) => ({
         title: link.title,
         url: link.url,
-        snippet: `(no exact match for "${query}") — available in documentation`,
+        snippet: `(no exact match for "${query}") \u2014 available in documentation`,
       }));
     }
 
     return results;
   } catch (error) {
     throw new Error(
-      `Error searching documentation: ${error instanceof Error ? error.message : String(error)}`
+      `Error searching documentation: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -213,21 +427,18 @@ async function searchDocs(
  * Accepts both absolute URLs and relative paths.
  */
 async function readDoc(urlOrId: string): Promise<string> {
-  // If not a full URL, treat as a relative path from DOCS_BASE_URL
   let url: string;
   if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
     url = urlOrId;
   } else {
-    url = `${DOCS_BASE_URL}/${urlOrId.replace(/^\/+/, "")}`;
+    const path = urlOrId.replace(/^\/?/, "");
+    url = `${DOCS_BASE_URL}/${path}`;
   }
 
   try {
     const { data: html } = await axios.get<string>(url, {
       timeout: 15_000,
-      headers: {
-        "User-Agent":
-          "QuasarStoreDocsMCP/1.0 (compatible; MCP-Client)",
-      },
+      headers: { "User-Agent": UA },
     });
 
     return extractContentFromHtml(html, url);
@@ -236,7 +447,9 @@ async function readDoc(urlOrId: string): Promise<string> {
       return `Error: Article at "${url}" was not found (404). Please verify the URL is correct.`;
     }
     throw new Error(
-      `Error reading article: ${error instanceof Error ? error.message : String(error)}`
+      `Error reading article: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -257,7 +470,7 @@ server.tool(
   {
     query: z
       .string()
-      .describe("Search term, e.g. 'installation', 'database errors'"),
+      .describe("Search term, e.g. 'installation', 'database errors', 'advanced inventory'"),
   },
   async ({ query }) => {
     try {
@@ -294,7 +507,9 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: `Search error: ${error instanceof Error ? error.message : String(error)}`,
+            text: `Search error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
         isError: true,
@@ -306,13 +521,11 @@ server.tool(
 // ---- Tool: read_doc ----
 server.tool(
   "read_doc",
-  "Read the full content of a Quasar Store documentation article",
+  "Read the full content of a Quasar Store documentation article by its URL or relative path",
   {
-    url: z
-      .string()
-      .describe(
-        'Full article URL or relative path (e.g. "guide/installation" or "https://docs.example.com/quasar-store/guide/installation")'
-      ),
+    url: z.string().describe(
+      'Full article URL or relative path (e.g. "advanced-inventory/installation" or "https://www.quasar-store.com/docs/advanced-inventory/installation")'
+    ),
   },
   async ({ url }) => {
     try {
@@ -331,7 +544,9 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: `Error reading article: ${error instanceof Error ? error.message : String(error)}`,
+            text: `Error reading article: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
         isError: true,
@@ -347,7 +562,9 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Quasar Store Docs MCP server started successfully");
+  console.error(
+    `Quasar Store Docs MCP server started (base: ${DOCS_BASE_URL})`
+  );
 }
 
 main().catch((error) => {
