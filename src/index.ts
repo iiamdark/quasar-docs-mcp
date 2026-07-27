@@ -370,17 +370,68 @@ function extractNavLinks(
 }
 
 // ---------------------------------------------------------------------------
+// In-memory cache with TTL
+// ---------------------------------------------------------------------------
+
+/** Time-to-live for cached data in milliseconds (default: 5 minutes). */
+const CACHE_TTL_MS = parseInt(process.env.DOCS_CACHE_TTL ?? "300000", 10);
+
+class MemoryCache<T> {
+  private value: T | null = null;
+  private expiry = 0;
+  private pending: Promise<T> | null = null;
+
+  /**
+   * Returns the cached value if fresh, otherwise calls `fetcher` once
+   * and caches the result. Concurrent callers share the same fetch.
+   */
+  async get(fetcher: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+
+    // Serve from cache if still fresh
+    if (this.value !== null && now < this.expiry) {
+      return this.value;
+    }
+
+    // Deduplicate concurrent requests
+    if (this.pending) {
+      return this.pending;
+    }
+
+    this.pending = fetcher()
+      .then((result) => {
+        this.value = result;
+        this.expiry = now + CACHE_TTL_MS;
+        return result;
+      })
+      .finally(() => {
+        this.pending = null;
+      });
+
+    return this.pending;
+  }
+
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers for fetching docs page data
 // ---------------------------------------------------------------------------
 
-/** Fetches any docs page and returns all extracted navigation links. */
+const linksCache = new MemoryCache<Array<{ title: string; url: string }>>();
+
+/**
+ * Fetches any docs page and returns all extracted navigation links.
+ * Results are cached for `DOCS_CACHE_TTL` ms (default 5 minutes).
+ */
 async function fetchAllDocsLinks(): Promise<Array<{ title: string; url: string }>> {
-  const docsUrl = `${DOCS_BASE_URL}/docs/advanced-inventory`;
-  const { data: html } = await axios.get<string>(docsUrl, {
-    timeout: 15_000,
-    headers: { "User-Agent": UA },
+  return linksCache.get(async () => {
+    const docsUrl = `${DOCS_BASE_URL}/docs/advanced-inventory`;
+    const { data: html } = await axios.get<string>(docsUrl, {
+      timeout: 15_000,
+      headers: { "User-Agent": UA },
+    });
+    return extractNavLinks(html, DOCS_BASE_URL);
   });
-  return extractNavLinks(html, DOCS_BASE_URL);
 }
 
 // ---------------------------------------------------------------------------
