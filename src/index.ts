@@ -431,7 +431,11 @@ async function readDoc(urlOrId: string): Promise<string> {
   if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
     url = urlOrId;
   } else {
-    const path = urlOrId.replace(/^\/?/, "");
+    // Ensure the path includes /docs/ prefix for Quasar Store docs site
+    let path = urlOrId.replace(/^\/?/, "");
+    if (!path.startsWith("docs/")) {
+      path = `docs/${path}`;
+    }
     url = `${DOCS_BASE_URL}/${path}`;
   }
 
