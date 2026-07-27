@@ -11,6 +11,13 @@ build/
 .env
 .env.local
 
+# npm credentials
+.npmrc
+
+# Secrets
+*.pem
+*.key
+
 # OS files
 .DS_Store
 Thumbs.db

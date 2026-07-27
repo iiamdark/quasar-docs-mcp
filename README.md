@@ -69,40 +69,38 @@ The server communicates with your AI client via **stdio** (standard input/output
 
 ## Installation
 
-### Step 1: Clone the repository
+You have two options:
+
+### Option A: Install via npx (recommended — no clone needed)
+
+The package is published on npm, so you can run it directly without cloning or installing:
+
+```bash
+npx -y quasar-store-docs-mcp
+```
+
+Then in your MCP client configs, just reference `npx` as the command:
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "quasar-store-docs-mcp"]
+}
+```
+
+> **Note:** `-y` tells npx to auto-confirm the install. Omit it if you want a confirmation prompt.
+
+### Option B: Clone and build locally
 
 ```bash
 git clone https://github.com/iiamdark/quasar-docs-mcp.git
 cd quasar-docs-mcp
-```
-
-### Step 2: Install dependencies
-
-```bash
 npm install
-```
-
-### Step 3: Build the project
-
-```bash
 npm run build
+npm link                    # makes `quasar-store-docs-mcp` available globally
 ```
 
-This compiles the TypeScript source from `src/` into JavaScript, outputting to the `build/` directory.
-
-### Step 4: Make the command globally available (recommended)
-
-```bash
-npm link
-```
-
-After running `npm link`, the command `quasar-store-docs-mcp` is available globally on your system. This is the **recommended approach** because:
-
-- Your MCP client configs will not contain any file paths to your machine
-- You can move the project folder and only need to re-run `npm link`
-- The command name is short and consistent across all clients
-
-To verify it worked:
+To verify the link worked:
 
 ```bash
 which quasar-store-docs-mcp   # macOS / Linux
@@ -150,16 +148,30 @@ const SELECTORS = {
 
 ## Client Integration
 
-You have two options for referencing the server in your MCP client configuration:
+You have three options for referencing the server in your MCP client configuration:
 
-- **Option A (recommended):** Use the global command `quasar-store-docs-mcp` (after running `npm link`)
-- **Option B:** Use the full path to `build/index.js` directly
+- **Option A (recommended — no install):** Use `npx -y quasar-store-docs-mcp` — works without cloning or building
+- **Option B:** Use the global command `quasar-store-docs-mcp` (after running `npm link`)
+- **Option C:** Use the full path to `build/index.js` directly
 
 ### Claude Desktop
 
 Configuration file: `claude_desktop_config.json`
 
-**Option A — with npm link:**
+**Option A — with npx (no install needed):**
+
+```json
+{
+  "mcpServers": {
+    "quasar-store-docs": {
+      "command": "npx",
+      "args": ["-y", "quasar-store-docs-mcp"]
+    }
+  }
+}
+```
+
+**Option B — with npm link:**
 
 ```json
 {
@@ -171,7 +183,7 @@ Configuration file: `claude_desktop_config.json`
 }
 ```
 
-**Option B — with direct path:**
+**Option C — with direct path:**
 
 ```json
 {
@@ -187,10 +199,13 @@ Configuration file: `claude_desktop_config.json`
 ### Claude Code
 
 ```bash
-# Option A — with npm link:
+# Option A — with npx:
+claude mcp add quasar-store-docs -- npx -y quasar-store-docs-mcp
+
+# Option B — with npm link:
 claude mcp add quasar-store-docs -- quasar-store-docs-mcp
 
-# Option B — with direct path:
+# Option C — with direct path:
 claude mcp add quasar-store-docs -- node /full/path/to/quasar-docs-mcp/build/index.js
 ```
 
@@ -198,7 +213,20 @@ claude mcp add quasar-store-docs -- node /full/path/to/quasar-docs-mcp/build/ind
 
 Antigravity reads MCP server configurations from **`~/.gemini/config/mcp_config.json`** (global) or **`.agents/mcp_config.json`** (per-project).
 
-Add the following to the file:
+**Option A — with npx (no install needed):**
+
+```json
+{
+  "mcpServers": {
+    "quasar-store-docs": {
+      "command": "npx",
+      "args": ["-y", "quasar-store-docs-mcp"]
+    }
+  }
+}
+```
+
+**Option B — with npm link or locally built:**
 
 ```json
 {
@@ -218,6 +246,23 @@ After saving:
 
 OpenCode uses a configuration file at **`~/.config/opencode/opencode.json`**. The format is different from other clients:
 
+**Option A — with npx:**
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "quasar-store-docs": {
+      "type": "local",
+      "command": ["npx", "-y", "quasar-store-docs-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Option B — with npm link:**
+
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
@@ -235,7 +280,20 @@ OpenCode uses a configuration file at **`~/.config/opencode/opencode.json`**. Th
 
 ### VS Code (Cline, Continue, Copilot)
 
-Configuration file: `settings.json` (User or Workspace)
+**Option A — with npx:**
+
+```json
+{
+  "mcpServers": {
+    "quasar-store-docs": {
+      "command": "npx",
+      "args": ["-y", "quasar-store-docs-mcp"]
+    }
+  }
+}
+```
+
+**Option B — with npm link or locally built:**
 
 ```json
 {
@@ -249,22 +307,20 @@ Configuration file: `settings.json` (User or Workspace)
 
 ### Cursor
 
-In Cursor, go to **Settings** → **Features** → **MCP Servers** → **Add new MCP server**:
+**Option A — with npx:**
 
-**Option A — with npm link:**
+```
+Name: quasar-store-docs
+Type: command
+Command: npx -y quasar-store-docs-mcp
+```
+
+**Option B — with npm link:**
 
 ```
 Name: quasar-store-docs
 Type: command
 Command: quasar-store-docs-mcp
-```
-
-**Option B — with direct path:**
-
-```
-Name: quasar-store-docs
-Type: command
-Command: node /full/path/to/quasar-docs-mcp/build/index.js
 ```
 
 ---
