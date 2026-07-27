@@ -20,21 +20,16 @@ By default, the server is pre-configured to work with the live [Quasar Store doc
 - Node.js >= 18
 - npm
 
-## Installation
+## Quick start
 
 ```bash
 git clone https://github.com/iiamdark/quasar-docs-mcp.git
 cd quasar-docs-mcp
 npm install
-```
-
-## Build
-
-```bash
 npm run build
 ```
 
-The compiled output goes to `build/`.
+> **Tip:** After building, run `npm link` to make the `quasar-store-docs-mcp` command available globally. Then all MCP client configs below will work without any file paths.
 
 ## Configuration
 
@@ -74,9 +69,10 @@ The Quasar Store documentation is built with Next.js and uses React Server Compo
 
 ## Integration with MCP clients
 
-> **Tip:** In all configs below, replace `/path/to/` with the **absolute path** to your project's `build/index.js`.
-> On Windows it might look like `C:/Users/joelp/Documents/quasar-docs-mcp/build/index.js`.
-> On macOS / Linux it might look like `/home/user/quasar-docs-mcp/build/index.js`.
+You have two options:
+
+- **Option A (recommended):** Run `npm link` in the project directory after building, then use just `quasar-store-docs-mcp` as the command — no file paths needed.
+- **Option B:** Use the full path to `build/index.js` directly.
 
 ### Claude Desktop
 
@@ -86,8 +82,20 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "quasar-store-docs": {
+      "command": "quasar-store-docs-mcp"
+    }
+  }
+}
+```
+
+Or with a direct path:
+
+```json
+{
+  "mcpServers": {
+    "quasar-store-docs": {
       "command": "node",
-      "args": ["/path/to/quasar-docs-mcp/build/index.js"]
+      "args": ["./quasar-docs-mcp/build/index.js"]
     }
   }
 }
@@ -96,21 +104,22 @@ Add to your `claude_desktop_config.json`:
 ### Claude Code
 
 ```bash
+# After npm link:
+claude mcp add quasar-store-docs -- quasar-store-docs-mcp
+
+# Or with a direct path:
 claude mcp add quasar-store-docs -- node /path/to/quasar-docs-mcp/build/index.js
 ```
 
 ### Antigravity (Google)
 
-Antigravity uses a global config file at **`~/.gemini/config/mcp_config.json`** (or a local one at `.agents/mcp_config.json` in your project).
-
-Add this to the file:
+Antigravity uses a global config file at **`~/.gemini/config/mcp_config.json`** (or `.agents/mcp_config.json` in your project).
 
 ```json
 {
   "mcpServers": {
     "quasar-store-docs": {
-      "command": "node",
-      "args": ["/path/to/quasar-docs-mcp/build/index.js"]
+      "command": "quasar-store-docs-mcp"
     }
   }
 }
@@ -120,7 +129,7 @@ After saving, restart Antigravity or open the MCP Servers panel from the agent s
 
 ### OpenCode
 
-OpenCode uses its own config file at **`~/.config/opencode/opencode.json`**. The format is different from VS Code:
+OpenCode uses its own config file at **`~/.config/opencode/opencode.json`**. The format is different from other clients:
 
 ```jsonc
 {
@@ -128,14 +137,14 @@ OpenCode uses its own config file at **`~/.config/opencode/opencode.json`**. The
   "mcp": {
     "quasar-store-docs": {
       "type": "local",
-      "command": ["node", "/path/to/quasar-docs-mcp/build/index.js"],
+      "command": ["quasar-store-docs-mcp"],
       "enabled": true
     }
   }
 }
 ```
 
-> **Note:** OpenCode uses `"mcp"` (not `"mcpServers"`), and the `command` is an **array** instead of separate `command` + `args` fields. Each server also needs `"type": "local"` and `"enabled": true`.
+> **Note:** OpenCode uses `"mcp"` (not `"mcpServers"`). The `command` is an **array**, and each server needs `"type": "local"` plus `"enabled": true`.
 
 ### VS Code (Cline, Continue, Copilot)
 
@@ -145,8 +154,7 @@ Add to your VS Code `settings.json`:
 {
   "mcpServers": {
     "quasar-store-docs": {
-      "command": "node",
-      "args": ["/path/to/quasar-docs-mcp/build/index.js"]
+      "command": "quasar-store-docs-mcp"
     }
   }
 }
