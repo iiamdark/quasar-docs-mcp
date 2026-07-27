@@ -370,8 +370,77 @@ function extractNavLinks(
 }
 
 // ---------------------------------------------------------------------------
+// Shared helpers for fetching docs page data
+// ---------------------------------------------------------------------------
+
+/** Fetches any docs page and returns all extracted navigation links. */
+async function fetchAllDocsLinks(): Promise<Array<{ title: string; url: string }>> {
+  const docsUrl = `${DOCS_BASE_URL}/docs/advanced-inventory`;
+  const { data: html } = await axios.get<string>(docsUrl, {
+    timeout: 15_000,
+    headers: { "User-Agent": UA },
+  });
+  return extractNavLinks(html, DOCS_BASE_URL);
+}
+
+// ---------------------------------------------------------------------------
 // Core tools
 // ---------------------------------------------------------------------------
+
+/**
+ * Lists all available documentation products/categories with the number
+ * of articles each contains. Useful for discovery before searching.
+ */
+async function listDocs(): Promise<
+  Array<{
+    product: string;
+    articleCount: number;
+    overviewUrl: string;
+    sections: string[];
+  }>
+> {
+  const links = await fetchAllDocsLinks();
+
+  // Group links by product (first path segment after /docs/)
+  const productMap = new Map<
+    string,
+    { urls: Set<string>; sections: Set<string>; overviewUrl: string }
+  >();
+
+  for (const link of links) {
+    const pathMatch = new URL(link.url).pathname.match(/\/docs\/([^/]+)/);
+    if (!pathMatch) continue;
+
+    const productKey = pathMatch[1];
+    const productName = capitalize(productKey.replace(/[-_]/g, " "));
+
+    if (!productMap.has(productKey)) {
+      productMap.set(productKey, {
+        urls: new Set(),
+        sections: new Set(),
+        overviewUrl: link.url,
+      });
+    }
+
+    const entry = productMap.get(productKey)!;
+    entry.urls.add(link.url);
+
+    // Extract the section name from the title (everything after " — ")
+    const sectionMatch = link.title.match(/\u2014 (.+)/);
+    if (sectionMatch) {
+      entry.sections.add(sectionMatch[1]);
+    }
+  }
+
+  return Array.from(productMap.entries())
+    .map(([key, entry]) => ({
+      product: capitalize(key.replace(/[-_]/g, " ")),
+      articleCount: entry.urls.size,
+      overviewUrl: entry.overviewUrl,
+      sections: Array.from(entry.sections).sort(),
+    }))
+    .sort((a, b) => a.product.localeCompare(b.product));
+}
 
 /**
  * Searches documentation articles by filtering navigation link titles
@@ -381,14 +450,7 @@ async function searchDocs(
   query: string
 ): Promise<Array<{ title: string; url: string; snippet: string }>> {
   try {
-    // Fetch any docs page — the RSC payload is consistent across all pages
-    const docsUrl = `${DOCS_BASE_URL}/docs/advanced-inventory`;
-    const { data: html } = await axios.get<string>(docsUrl, {
-      timeout: 15_000,
-      headers: { "User-Agent": UA },
-    });
-
-    const links = extractNavLinks(html, DOCS_BASE_URL);
+    const links = await fetchAllDocsLinks();
     const lowerQuery = query.toLowerCase();
 
     const results = links
@@ -466,6 +528,60 @@ const server = new McpServer({
   name: "quasar-store-docs-mcp",
   version: "1.0.0",
 });
+
+// ---- Tool: list_docs ----
+server.tool(
+  "list_docs",
+  "List all available documentation products/categories with article counts and section overviews",
+  {},
+  async () => {
+    try {
+      const products = await listDocs();
+
+      if (products.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "No documentation categories found. Verify the documentation base URL.",
+            },
+          ],
+        };
+      }
+
+      const formatted = products
+        .map(
+          (p) =>
+            `### ${p.product}\n` +
+            `Articles: ${p.articleCount} | ` +
+            `Overview: ${p.overviewUrl}\n` +
+            `Sections: ${p.sections.join(", ") || "Overview only"}`
+        )
+        .join("\n\n");
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Available documentation categories (**${products.length}** total):\n\n${formatted}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error listing documentation: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
 
 // ---- Tool: search_docs ----
 server.tool(

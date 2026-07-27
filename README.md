@@ -40,6 +40,7 @@ By default, the server is pre-configured to work with the live [Quasar Store doc
 
 | Tool         | What it does                                                                 |
 | ------------ | ---------------------------------------------------------------------------- |
+| `list_docs`  | Lists all available documentation products/categories with article counts and section overviews. Useful for discovery before searching. |
 | `search_docs`| Searches the Quasar Store documentation for articles matching a query term. Returns titles, URLs, and snippets. |
 | `read_doc`   | Fetches and returns the full content of a documentation article as formatted Markdown. |
 
@@ -270,7 +271,29 @@ Command: node /full/path/to/quasar-docs-mcp/build/index.js
 
 ## Usage Examples
 
-Once configured, your AI assistant will automatically discover the available tools (`search_docs` and `read_doc`) and use them when relevant.
+Once configured, your AI assistant will automatically discover the available tools (`list_docs`, `search_docs`, `read_doc`) and use them when relevant.
+
+### Exploring available categories
+
+When the AI needs to understand what documentation exists, it can call `list_docs` (no arguments needed). This returns a complete list of all products with:
+- Product name (e.g. "Advanced Inventory", "Housing Creator", "Smartphone")
+- Number of articles available
+- Overview URL
+- List of section names (Installation, Commands and Exports, etc.)
+
+Example result from `list_docs`:
+
+```
+### Advanced Inventory
+Articles: 6 | Overview: https://www.quasar-store.com/docs/advanced-inventory
+Sections: Commands And Exports, Convert Inventory Items, General Integrations, How To Create Missions, Installation, Item Configuration
+
+### Housing Creator
+Articles: 4 | Overview: https://www.quasar-store.com/docs/housing-creator
+Sections: Commands And Exports, Installation, Inventory Items
+```
+
+93 total products are indexed.
 
 ### Searching for documentation
 
