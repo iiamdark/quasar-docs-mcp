@@ -38,11 +38,11 @@ By default, the server is pre-configured to work with the live [Quasar Store doc
 
 ## Tools
 
-| Tool         | What it does                                                                 |
-| ------------ | ---------------------------------------------------------------------------- |
-| `list_docs`  | Lists all available documentation products/categories with article counts and section overviews. Useful for discovery before searching. |
-| `search_docs`| Searches the Quasar Store documentation for articles matching a query term. Returns titles, URLs, and snippets. |
-| `read_doc`   | Fetches and returns the full content of a documentation article as formatted Markdown. |
+| Tool | Type | Description |
+| --- | --- | --- |
+| `list_docs` | Discovery | Lists all documentation products with article counts, overview URLs, and section names. No arguments needed. |
+| `search_docs` | Search | Searches documentation by keyword. Returns matching article titles, URLs, and snippets. |
+| `read_doc` | Read | Fetches full article content as formatted Markdown. Accepts a URL or relative path. |
 
 ---
 
@@ -325,21 +325,27 @@ Command: quasar-store-docs-mcp
 
 ---
 
-## Usage Examples
+## Tools Quick Reference
 
-Once configured, your AI assistant will automatically discover the available tools (`list_docs`, `search_docs`, `read_doc`) and use them when relevant.
+---
 
-### Exploring available categories
+### `list_docs` — Browse available documentation
 
-When the AI needs to understand what documentation exists, it can call `list_docs` (no arguments needed). This returns a complete list of all products with:
-- Product name (e.g. "Advanced Inventory", "Housing Creator", "Smartphone")
-- Number of articles available
-- Overview URL
-- List of section names (Installation, Commands and Exports, etc.)
+Lists every product/category indexed from the Quasar Store docs (93 products total).
 
-Example result from `list_docs`:
+**Signature:**
 
 ```
+list_docs()
+```
+
+No arguments needed.
+
+**Example output (truncated):**
+
+```
+Available documentation categories (93 total):
+
 ### Advanced Inventory
 Articles: 6 | Overview: https://www.quasar-store.com/docs/advanced-inventory
 Sections: Commands And Exports, Convert Inventory Items, General Integrations, How To Create Missions, Installation, Item Configuration
@@ -347,38 +353,131 @@ Sections: Commands And Exports, Convert Inventory Items, General Integrations, H
 ### Housing Creator
 Articles: 4 | Overview: https://www.quasar-store.com/docs/housing-creator
 Sections: Commands And Exports, Installation, Inventory Items
+
+### Smartphone
+Articles: 5 | Overview: https://www.quasar-store.com/docs/smartphone
+Sections: Commands And Exports, How To Install Apps, Installation
+...
 ```
 
-93 total products are indexed.
+**When to use:** When you don't know what documentation exists. Start here to discover products, then search or read specific articles.
 
-### Searching for documentation
+---
 
-The AI might call `search_docs` when you ask questions like:
+### `search_docs` — Find articles by keyword
 
-| You ask... | The AI searches for... | Result |
-|---|---|---|
-| "How do I install Advanced Inventory?" | `search_docs("advanced inventory installation")` | Returns links to relevant installation guides |
-| "What are common database errors?" | `search_docs("database errors")` | Returns troubleshooting articles |
-| "Explain the housing creator" | `search_docs("housing creator")` | Returns the Housing Creator documentation |
-| "How does the smartphone work?" | `search_docs("smartphone")` | Returns Smartphone docs and setup guides |
+Searches article titles and URLs for a query term.
 
-### Reading a full article
-
-After finding relevant articles, the AI will call `read_doc` with the URL or relative path to get the full content:
+**Signature:**
 
 ```
-read_doc("advanced-inventory/installation")
-read_doc("https://www.quasar-store.com/docs/smartphone/installation")
-read_doc("housing-creator/commands-and-exports")
+search_docs(query: string)
 ```
 
-The server returns the content as formatted Markdown, including:
-- Article title and description
-- Section headings (converted from HTML)
+| Argument | Type | Description |
+| --- | --- | --- |
+| `query` | string (required) | Search term. Matches against article titles and URLs. Case insensitive. |
+
+**Good queries:** `"installation"`, `"database errors"`, `"advanced inventory"`, `"commands"`, `"exports"`, `"common issues"`
+
+**Example output:**
+
+```
+Results for "installation":
+
+1. **Smartphone — Installation**
+   URL: https://www.quasar-store.com/docs/smartphone/installation
+   Documentation: Smartphone — Installation
+
+2. **Advanced Inventory — Installation**
+   URL: https://www.quasar-store.com/docs/advanced-inventory/installation
+   Documentation: Advanced Inventory — Installation
+
+3. **Police Creator — Installation**
+   URL: https://www.quasar-store.com/docs/police-creator/installation
+   Documentation: Police Creator — Installation
+```
+
+**When to use:** When you know roughly what you're looking for. The search covers article titles and URLs, so use specific keywords.
+
+**No results?** The tool returns the first 15 available articles as a fallback, so the AI can still see what exists.
+
+---
+
+### `read_doc` — Read full article content
+
+Fetches a documentation article and returns it as formatted Markdown.
+
+**Signature:**
+
+```
+read_doc(url: string)
+```
+
+| Argument | Type | Description | Examples |
+| --- | --- | --- | --- |
+| `url` | string (required) | Full URL **or** relative path. The server resolves relative paths against the base URL. | `"advanced-inventory/installation"` `"https://www.quasar-store.com/docs/smartphone/installation"` `"housing-creator/commands-and-exports"` |
+
+**Example output:**
+
+```markdown
+# Installation
+
+> Installation guide — please follow each step carefully and exactly as described to ensure the script works correctly on your server.
+
+---
+
+Download the script assets from the Cfx.re portal...
+
+## Step 1: Download
+
+Open the Cfx.re granted assets page...
+
+## Step 2: Add to server
+
+Place the folder in your `resources` directory...
+
+---
+Source: https://www.quasar-store.com/docs/advanced-inventory/installation
+```
+
+**What gets extracted:**
+- Article title and meta description
+- Section headings (converted to Markdown `#` / `##` / `###`)
 - Paragraphs of explanatory text
 - Code blocks
-- Lists and tables
-- Source attribution
+- Lists (bulleted and numbered)
+- Tables (converted to Markdown table format)
+- Blockquotes
+
+**When to use:** After finding an article via `list_docs` or `search_docs`. Pass the URL or relative path to get the full content.
+
+---
+
+## Usage Examples
+
+Once configured, your AI assistant will automatically discover the 3 available tools and use them when relevant. Here are typical interaction patterns:
+
+### Pattern: Discover → Search → Read
+
+This is the most common workflow:
+
+| Step | Trigger | Tool called |
+| --- | --- | --- |
+| 1 | "What documentation exists for housing?" | `list_docs()` → finds "Housing Creator" |
+| 2 | "How do I install it?" | `search_docs("housing creator installation")` → finds the installation article |
+| 3 | "Read it to me" | `read_doc("housing-creator/installation")` → returns full content |
+
+### Conversation examples
+
+| You ask... | The AI calls... | Result |
+| --- | --- | --- |
+| "What documentation is available?" | `list_docs()` | Full product listing with 93 categories |
+| "How do I install Advanced Inventory?" | `search_docs("advanced inventory installation")` | Links to installation guides |
+| "What are common database errors?" | `search_docs("database errors")` | Troubleshooting articles |
+| "Explain the housing creator features" | `search_docs("housing creator")` + `read_doc(...)` | Full article content |
+| "Read me the smartphone commands" | `read_doc("smartphone/commands-and-exports")` | Commands in Markdown |
+| "What sections does Admin Menu have?" | `list_docs()` → find "Admin Menu" in output | Section listing for Admin Menu |
 
 ---
 
@@ -402,7 +501,7 @@ quasar-docs-mcp/
 
 | File | Purpose |
 |---|---|
-| `src/index.ts` | Complete MCP server: initializes the server, registers `search_docs` and `read_doc` tools, implements web scraping with axios + cheerio, and handles RSC payload extraction for Next.js sites |
+| `src/index.ts` | Complete MCP server: initializes the server, registers `list_docs`, `search_docs`, and `read_doc` tools, implements web scraping with axios + cheerio, handles RSC payload extraction for Next.js sites, and includes an in-memory cache with TTL |
 | `package.json` | Project metadata, dependencies (`@modelcontextprotocol/sdk`, `axios`, `cheerio`, `zod`), build scripts |
 | `tsconfig.json` | TypeScript configuration targeting ES2022 with Node16 module resolution |
 | `build/index.js` | Compiled output — this is what you reference in your MCP client configs |
